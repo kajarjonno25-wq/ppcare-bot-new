@@ -1,31 +1,34 @@
-from flask import Flask, request
+from fastapi import FastAPI, Request, Response
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 import requests
 from datetime import datetime
 import os
+import uvicorn
 
-app = Flask(__name__)
+app = FastAPI()
 
 BOT_TOKEN = "8683913109:AAGqeL4FleykAuOIoqeoSFQ77H4pryBewG4"
 SUPABASE_URL = "https://kzvnwugoyqbyxslxzzul.supabase.co"
 SUPABASE_KEY = "sb_publishable_OlsWkOtI5JjJ0UBZLqsP8Q_T4kS3xsG"
 WEBAPP_URL = "https://kzvnwugoyqbyxslxzzul.supabase.co"
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return 'OK', 200
-    return 'Bad Request', 400
+@app.post(f"/{BOT_TOKEN}")
+async def webhook(request: Request):
+    json_str = await request.body()
+    update = telebot.types.Update.de_json(json_str.decode('utf-8'))
+    bot.process_new_updates([update])
+    return Response(content="OK", status_code=200)
 
-@app.route('/')
-def index():
-    return 'PP Digital Care Bot is running!', 200
+@app.get("/")
+async def index():
+    return {"message": "PP Digital Care Bot is running!"}
+
+@app.get("/health")
+async def health():
+    return {"status": "alive"}
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -50,8 +53,8 @@ def start(message):
                 "created_at": datetime.now().isoformat()
             }
             requests.post(f"{SUPABASE_URL}/rest/v1/users", json=data, headers=headers)
-    except:
-        pass
+    except Exception as e:
+        print(f"Supabase error: {e}")
     
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🎮 মিনি অ্যাপ খুলুন", web_app=WebAppInfo(url=WEBAPP_URL)))
@@ -70,9 +73,9 @@ def balance(message):
             bot.reply_to(message, f"💰 আপনার ব্যালেন্স: ${bal}")
         else:
             bot.reply_to(message, "❌ ব্যালেন্স লোড করতে সমস্যা হয়েছে")
-    except:
-        bot.reply_to(message, "❌ সাপাবেস কানেক্ট করতে পারেনি")
+    except Exception as e:
+        bot.reply_to(message, f"❌ এরর: {str(e)}")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
